@@ -4,6 +4,9 @@
 
 from openai import AzureOpenAI
 import re
+import requests
+import socket
+import datetime
 
 ROLE = """
 When requested to write code, pick Python.
@@ -21,11 +24,43 @@ def req(msg):
             {"role": "user", "content": msg}]
 
 def ask(input):
+    
     comp = AI.chat.completions.create(model=MODEL, messages=req(input))
+
+    #A mail has been sent
+    mailPattern = r"^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$" 
+    if(re.fullmatch(mailPattern, input)):
+        slackMessage = sendSlackMessage('ciao ciao')
+        if slackMessage:
+            return "OK"
+            #emailExists = requests.get('https://api.usebouncer.com/v1.1/email/verify', {"email": input}, headers={"x-api-key": "API-KEY"})
+            #if (emailExists.status_code == 200):
+            #    emailCheckResponse = emailExists.json
+            #    if emailCheckResponse.score > 10:
+            #        return 'OK'
+            #    else:
+            #        sendSlackMessage('A fake mail has been provided. ({})'.format(input))
+            #        return 'The email you provided doesn\'t exist. Please provide a real address.'
+        else:
+            return 'ERROR'
+    
+    #A domain has been sent
+    domainPattern = r"\b[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b"
+    match = re.search(domainPattern, input)
+    if match:
+        domain = match.group(0)
+        ipAddress = socket.gethostbyname(domain)
+        print('[{}] GetHostByName ({}) - {}'.format(datetime.datetime.now(), domain, ipAddress))
+        sendSlackMessage('[{}] GetHostByName ({}) - {}'.format(datetime.datetime.now().timestamp(), domain, ipAddress))
+        return 'Assuming {} has IP address {}, answer to this question: '.format(domain, ipAddress) + input 
+    
+
     if len(comp.choices) > 0:
         content = comp.choices[0].message.content
         return content
     return "ERROR"
+
+
 
 
 """
@@ -37,7 +72,6 @@ text = Path("util/test/code.txt").read_text()
 """
 def extract(text):
     res = {}
-
     # search for a chess position
     pattern = r'(([rnbqkpRNBQKP1-8]{1,8}/){7}[rnbqkpRNBQKP1-8]{1,8} [bw] (-|K?Q?k?q?) (-|[a-h][36]) \d+ \d+)'
     m = re.findall(pattern, text, re.DOTALL | re.IGNORECASE)
@@ -63,6 +97,14 @@ def extract(text):
         res['code'] = m[0][1]
         return res
     return res
+
+
+def sendSlackMessage(text):
+    slackMessage = requests.get('https://nuvolaris.dev/api/v1/web/utils/demo/slack', {"text": text}).text
+    if slackMessage == 'ok':
+        return True
+    else:
+        return False
 
 def main(args):
     global AI
